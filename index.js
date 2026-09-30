@@ -5,23 +5,26 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
-const readline = require("readline");
 const fs = require("fs");
+const http = require("http");
 
-const sessionsDir = "./sessions";
+const PORT = process.env.PORT || 3000;
+const NUMBER = (process.env.WA_NUMBER || "").replace(/\D/g, "");
 
-fs.mkdirSync(sessionsDir, { recursive: true });
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("🌿 RICK XMD ONLINE");
+}).listen(PORT, () => {
+  console.log(`🌐 Server running on port ${PORT}`);
 });
 
-const ask = q => new Promise(resolve => rl.question(q, resolve));
+async function startBot() {
+  if (!NUMBER) {
+    console.log("❌ WA_NUMBER is not set.");
+    return;
+  }
 
-async function startAccount(number) {
-  const sessionPath = `${sessionsDir}/${number}`;
-
+  const sessionPath = `./sessions/${NUMBER}`;
   fs.mkdirSync(sessionPath, { recursive: true });
 
   const { state, saveCreds } =
@@ -37,34 +40,19 @@ async function startAccount(number) {
   sock.ev.on("creds.update", saveCreds);
 
   if (!state.creds.registered) {
+    console.log("⏳ Requesting pairing code...");
+
     try {
-      console.log("\n⏳ Requesting pairing code...");
-
-      const code = await sock.requestPairingCode(number);
-
-      console.log(`
-╔════════════════════════════╗
-║        🌿 RICK XMD         ║
-║       PAIRING CODE         ║
-╠════════════════════════════╣
-║          ${code}          ║
-╚════════════════════════════╝
-
-WhatsApp → Linked Devices
-→ Link a device
-→ Link with phone number instead
-→ Enter the code above.
-`);
+      const code = await sock.requestPairingCode(NUMBER);
+      console.log(`🌿 RICK XMD PAIRING CODE: ${code}`);
     } catch (error) {
       console.log("❌ Pairing failed:", error.message);
-      sock.end(undefined);
-      return;
     }
   }
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      console.log(`\n✅ ${number} → RICK XMD ONLINE`);
+      console.log("✅ RICK XMD ONLINE");
     }
 
     if (connection === "close") {
@@ -72,20 +60,14 @@ WhatsApp → Linked Devices
         lastDisconnect?.error?.output?.statusCode;
 
       if (status !== DisconnectReason.loggedOut) {
-        console.log(`🔄 ${number} → reconnecting...`);
-
-        setTimeout(() => {
-          startAccount(number);
-        }, 5000);
-      } else {
-        console.log(`❌ ${number} → logged out`);
+        console.log("🔄 Reconnecting...");
+        setTimeout(startBot, 5000);
       }
     }
   });
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
-
     if (!msg?.message) return;
 
     const text =
@@ -110,8 +92,7 @@ WhatsApp → Linked Devices
 
     if (command === ".menu") {
       await sock.sendMessage(jid, {
-        text:
-`╔════════════════════╗
+        text: `╔════════════════════╗
 ║      🌿 RICK XMD   ║
 ╚════════════════════╝
 
@@ -125,27 +106,4 @@ Multi-Account Edition`
   });
 }
 
-async function main() {
-  console.log(`
-╔════════════════════════════════╗
-║          🌿 RICK XMD           ║
-║       MULTI-ACCOUNT BOT        ║
-╚════════════════════════════════╝
-`);
-
-  const number = await ask(
-    "📱 Enter WhatsApp number with country code: "
-  );
-
-  const cleanNumber = number.replace(/\D/g, "");
-
-  if (!cleanNumber) {
-    console.log("❌ Invalid number.");
-    rl.close();
-    return;
-  }
-
-  await startAccount(cleanNumber);
-}
-
-main().catch(console.error);
+startBot().catch(console.error);
